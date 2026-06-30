@@ -27,6 +27,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     "apps.accounts",
+    "apps.core",
+    "apps.docpolicy",
+    "apps.training",
+    "apps.dashbaord",
 ]
 
 MIDDLEWARE = [
