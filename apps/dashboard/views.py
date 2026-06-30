@@ -5,9 +5,16 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from apps.training.models import TrainingSession
+from apps.accounts.models import User
+from django.db.models import Avg, Count, Sum, Q
+from .serializers import (
+    AdminDashboardSerializer,
+    AgentTrainerListSerializer,
+)
+from apps.training.serializers import TrainingSessionSerializer
+from django.utils import timezone
 
-from .models import PolicyDocument
-from .serializers import PolicyDocumentSerializer, PolicyDocumentListSerializer
 
 # Create your views here.
 class AdminDashboardView(APIView):

@@ -13,7 +13,6 @@ class AppSettingSerializer(serializers.ModelSerializer):
             'id',
             'settings_type',
             'settings_type_display',
-            'user',
             'content',
             'created_at',
             'updated_at',

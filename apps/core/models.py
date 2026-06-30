@@ -26,4 +26,4 @@ class AppSetting(models.Model):
         verbose_name_plural = 'Settings'
     
     def __str__(self):
-        return f"{self.get_settings_type_display()} - {self.user.username if self.user else 'Global'}"
+        return self.get_settings_type_display()

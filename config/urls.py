@@ -17,7 +17,7 @@ def health_check(request):
         {
             "status": "healthy",
             "timestamp": timezone.now().isoformat(),
-            "service": "carwash-api",
+            "service": "peakagent-api",
         },
         status=status.HTTP_200_OK,
     )
@@ -29,7 +29,7 @@ urlpatterns = [
     path('api/auth/', include('apps.accounts.urls')),
     path('api/core/', include('apps.core.urls')),
     path('api/training/', include('apps.training.urls')),
-    path('api/docpolicy/', include('apps.docpolicy.urls')),
+    path('api/policy/', include('apps.docpolicy.urls')),
     path('api/notifications/', include('apps.notifications.urls')),
     path('api/admin/', include('apps.dashboard.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

@@ -102,22 +102,32 @@ class LoginView(BaseResponseMixin, APIView):
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
         tokens = get_tokens_for_user(user)
+        user_data = UserSerializer(user, context={'request': request}).data
         data = {
-            'user': UserSerializer(user, context={'request': request}).data,
+            'user': user_data,
             'tokens': tokens,
         }
-        return self.success_response(data=data, message="Login successful.")
+        return self.success_response(
+            data=data,
+            message="Login successful.",
+            access_token=tokens['access'],
+            refresh_token=tokens['refresh'],
+            user=user_data,
+        )
 
 
 class LogoutView(BaseResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.data.get('refresh')
+        refresh_token = request.data.get('refresh') or request.data.get('refresh_token')
         if not refresh_token:
             return self.bad_request_response(message="Refresh token is required.")
-        token = RefreshToken(refresh_token)
-        token.blacklist()
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except Exception as e:
+            return self.bad_request_response(message=str(e))
         return self.success_response(message="Logged out successfully.")
 
 
@@ -128,7 +138,12 @@ class OTPRequestView(BaseResponseMixin, APIView):
         serializer = OTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
-        purpose = serializer.validated_data.get('purpose', OTPVerification.PURPOSE_VERIFICATION)
+        purpose = serializer.validated_data.get('purpose')
+        if not purpose:
+            if 'forgot-password' in request.path:
+                purpose = OTPVerification.PURPOSE_PASSWORD_RESET
+            else:
+                purpose = OTPVerification.PURPOSE_VERIFICATION
         user = get_object_or_404(User, email=email)
         code = str(random.randint(100000, 999999))
         OTPVerification.objects.create(
@@ -161,7 +176,12 @@ class OTPVerifyView(BaseResponseMixin, APIView):
         user.save()
         tokens = get_tokens_for_user(user)
         data = {'tokens': tokens}
-        return self.success_response(data=data, message="Email verified successfully.")
+        return self.success_response(
+            data=data,
+            message="Email verified successfully.",
+            access_token=tokens['access'],
+            refresh_token=tokens['refresh'],
+        )
 
 
 class ChangePasswordView(BaseResponseMixin, APIView):
@@ -171,7 +191,7 @@ class ChangePasswordView(BaseResponseMixin, APIView):
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = request.user
-        if not user.check_password(serializer.validated_data['old_password']):
+        if not user.check_password(serializer.validated_data['current_password']):
             return self.error_response(message="Old password is incorrect.")
         user.set_password(serializer.validated_data['new_password'])
         user.save()
@@ -185,7 +205,7 @@ class CreateNewPasswordView(BaseResponseMixin, APIView):
         serializer = CreateNewPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
-        code = serializer.validated_data['code']
+        code = serializer.validated_data['otp']
         user = get_object_or_404(User, email=email)
         otp = OTPVerification.objects.filter(
             user=user, code=code, purpose=OTPVerification.PURPOSE_PASSWORD_RESET,
@@ -195,7 +215,7 @@ class CreateNewPasswordView(BaseResponseMixin, APIView):
             return self.error_response(message="Invalid or expired OTP.")
         otp.is_used = True
         otp.save()
-        user.set_password(serializer.validated_data['new_password'])
+        user.set_password(serializer.validated_data['password'])
         user.save()
         if user.email:
             send_password_reset_email_task.delay(

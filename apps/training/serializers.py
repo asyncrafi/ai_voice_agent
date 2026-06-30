@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import TrainingScript, AgentScript, TrainingSession
-from apps.accounts.serializers import UserProfileSerializer
+from apps.accounts.serializers import UserSerializer as UserProfileSerializer
 
 
 class TrainingScriptSerializer(serializers.ModelSerializer):

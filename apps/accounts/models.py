@@ -4,10 +4,12 @@ from django.utils import timezone
 
 
 class User(AbstractUser):
+    ROLE_AGENT = 'agent'
     ROLE_CUSTOMER = 'customer'
     ROLE_PROVIDER = 'provider'
     ROLE_ADMIN = 'admin'
     ROLE_CHOICES = [
+        (ROLE_AGENT, 'Agent'),
         (ROLE_CUSTOMER, 'Customer'),
         (ROLE_PROVIDER, 'Provider'),
         (ROLE_ADMIN, 'Admin'),
