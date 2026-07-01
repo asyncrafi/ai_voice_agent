@@ -4,20 +4,9 @@ from django.utils import timezone
 
 
 class User(AbstractUser):
-    ROLE_AGENT = 'agent'
-    ROLE_CUSTOMER = 'customer'
-    ROLE_PROVIDER = 'provider'
-    ROLE_ADMIN = 'admin'
-    ROLE_CHOICES = [
-        (ROLE_AGENT, 'Agent'),
-        (ROLE_CUSTOMER, 'Customer'),
-        (ROLE_PROVIDER, 'Provider'),
-        (ROLE_ADMIN, 'Admin'),
-    ]
     full_name = models.CharField(max_length=255, blank=True, null=True)
     first_name = None
     last_name = None
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
@@ -30,7 +19,7 @@ class User(AbstractUser):
     REQUIRED_FIELDS = ['username']
 
     def __str__(self):
-        return f"{self.full_name or self.email} ({self.role})"
+        return f"{self.full_name or self.email}"
 
 
 class OTPVerification(models.Model):

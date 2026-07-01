@@ -22,7 +22,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'full_name',
-            'email', 'role', 'password', 'retype_password',
+            'email', 'password', 'retype_password',
         ]
 
     def validate(self, attrs):
@@ -100,10 +100,10 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'full_name', 'phone',
-            'email', 'role', 'avatar',
+            'email', 'avatar',
             'is_verified', 'language', 'created_at',
         ]
-        read_only_fields = ['id', 'email', 'role', 'is_verified', 'created_at']
+        read_only_fields = ['id', 'email', 'is_verified', 'created_at']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

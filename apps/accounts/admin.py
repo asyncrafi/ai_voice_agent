@@ -5,19 +5,19 @@ from .models import User, OTPVerification
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ['email', 'full_name', 'role', 'phone', 'is_verified', 'is_active']
-    list_filter = ['role', 'is_verified', 'is_active']
+    list_display = ['email', 'full_name', 'phone', 'is_verified', 'is_active']
+    list_filter = ['is_verified', 'is_active']
     search_fields = ['email', 'full_name', 'phone']
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('Personal info', {'fields': ('full_name', 'phone', 'avatar')}),
-        ('Permissions', {'fields': ('role', 'is_verified', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Permissions', {'fields': ('is_verified', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2', 'role'),
+            'fields': ('email', 'username', 'password1', 'password2'),
         }),
     )
 

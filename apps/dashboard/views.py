@@ -27,7 +27,7 @@ class AdminDashboardView(APIView):
         from django.db.models.functions import TruncMonth
         import calendar
 
-        total_agents   = User.objects.filter(role='agent').count()
+        total_agents   = User.objects.filter(is_staff=False).count()
         total_sessions = TrainingSession.objects.count()
         ai_usage_rate  = TrainingSession.objects.filter(
             status=TrainingSession.COMPLETED
