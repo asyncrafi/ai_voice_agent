@@ -110,9 +110,6 @@ class LoginView(BaseResponseMixin, APIView):
         return self.success_response(
             data=data,
             message="Login successful.",
-            access_token=tokens['access'],
-            refresh_token=tokens['refresh'],
-            user=user_data,
         )
 
 
@@ -179,8 +176,6 @@ class OTPVerifyView(BaseResponseMixin, APIView):
         return self.success_response(
             data=data,
             message="Email verified successfully.",
-            access_token=tokens['access'],
-            refresh_token=tokens['refresh'],
         )
 
 

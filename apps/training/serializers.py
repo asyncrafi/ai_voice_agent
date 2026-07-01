@@ -4,27 +4,32 @@ from apps.accounts.serializers import UserSerializer as UserProfileSerializer
 
 
 class TrainingScriptSerializer(serializers.ModelSerializer):
-    """Used by admin to create/edit scripts."""
+    """Used by admin to create/edit scripts. Matches 'Add Agent Training' form."""
+
     class Meta:
-        model  = TrainingScript
+        model = TrainingScript
         fields = [
-            'id', 'title', 'category', 'difficulty',
+            'id', 'title', 'category', 'difficulty', 'duration_minutes',
             'content', 'system_prompt', 'image',
-            'description', 'is_default', 'created_at', 'updated_at',
+            'description', 'is_default', 'is_draft', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class TrainingScriptListSerializer(serializers.ModelSerializer):
-    """Lightweight for list views."""
+    """Lightweight for list views / the difficulty-picker screen."""
+
     class Meta:
-        model  = TrainingScript
-        fields = ['id', 'title', 'category', 'difficulty', 'image', 'description', 'is_default']
+        model = TrainingScript
+        fields = [
+            'id', 'title', 'category', 'difficulty', 'duration_minutes',
+            'image', 'description', 'is_default',
+        ]
 
 
 class AgentScriptSerializer(serializers.ModelSerializer):
     class Meta:
-        model  = AgentScript
+        model = AgentScript
         fields = ['id', 'base_script', 'title', 'content', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -34,8 +39,9 @@ class AgentScriptSerializer(serializers.ModelSerializer):
 
 
 class TrainingSessionStartSerializer(serializers.Serializer):
-    """Agent picks a script + difficulty to start a session."""
-    script_id  = serializers.IntegerField()
+    """Agent picks a script + difficulty to start a session (the 'Start Training' screen)."""
+
+    script_id = serializers.IntegerField()
     difficulty = serializers.ChoiceField(choices=['easy', 'medium', 'hard'])
 
     def validate_script_id(self, value):
@@ -46,18 +52,20 @@ class TrainingSessionStartSerializer(serializers.Serializer):
 
 class TrainingSessionEndSerializer(serializers.Serializer):
     """Agent sends transcript + stats when session ends."""
-    transcript       = serializers.ListField(child=serializers.DictField(), required=False)
+
+    transcript = serializers.ListField(child=serializers.DictField(), required=False)
     duration_seconds = serializers.IntegerField(min_value=0)
-    questions_asked  = serializers.IntegerField(min_value=0, required=False, default=0)
+    questions_asked = serializers.IntegerField(min_value=0, required=False, default=0)
 
 
 class TrainingSessionSerializer(serializers.ModelSerializer):
     """Full session detail."""
-    agent  = UserProfileSerializer(read_only=True)
+
+    agent = UserProfileSerializer(read_only=True)
     script = TrainingScriptListSerializer(read_only=True)
 
     class Meta:
-        model  = TrainingSession
+        model = TrainingSession
         fields = [
             'id', 'agent', 'script', 'difficulty', 'status',
             'transcript', 'duration_seconds', 'questions_asked',
@@ -68,10 +76,11 @@ class TrainingSessionSerializer(serializers.ModelSerializer):
 
 class TrainingSessionListSerializer(serializers.ModelSerializer):
     """Lightweight for list / recent sessions."""
+
     script_title = serializers.CharField(source='script.title', read_only=True)
 
     class Meta:
-        model  = TrainingSession
+        model = TrainingSession
         fields = [
             'id', 'script_title', 'difficulty', 'status',
             'duration_seconds', 'questions_asked',
@@ -81,32 +90,55 @@ class TrainingSessionListSerializer(serializers.ModelSerializer):
 
 class AgentDashboardSerializer(serializers.Serializer):
     """Agent home screen stats."""
+
     today_sessions_completed = serializers.IntegerField()
-    today_sessions_goal      = serializers.IntegerField()
+    today_sessions_goal = serializers.IntegerField()
     today_completion_percent = serializers.IntegerField()
-    overall_accuracy         = serializers.FloatField()
-    avg_session_minutes      = serializers.FloatField()
-    total_sessions           = serializers.IntegerField()
-    recent_sessions          = TrainingSessionListSerializer(many=True)
+    overall_accuracy = serializers.FloatField()
+    avg_session_minutes = serializers.FloatField()
+    total_sessions = serializers.IntegerField()
+    recent_sessions = TrainingSessionListSerializer(many=True)
+
 
 class AdminDashboardSerializer(serializers.Serializer):
-    total_agents         = serializers.IntegerField()
-    total_sessions       = serializers.IntegerField()
-    ai_usage_rate        = serializers.FloatField()
-    activity_trend       = serializers.ListField(child=serializers.DictField())  # monthly data
+    total_agents = serializers.IntegerField()
+    total_sessions = serializers.IntegerField()
+    ai_usage_rate = serializers.FloatField()
+    activity_trend = serializers.ListField(child=serializers.DictField())
     recent_user_sessions = serializers.ListField(child=serializers.DictField())
 
 
 class AgentTrainerListSerializer(serializers.ModelSerializer):
-    """Admin view: per-agent training stats."""
-    agent_name        = serializers.CharField(source='agent.full_name', read_only=True)
-    training_topic    = serializers.CharField(source='script.title', read_only=True)
-    performance_score = serializers.FloatField()
+    """Per-SESSION row — used only for the admin dashboard's 'recent sessions' widget,
+    NOT for the full 'Agent Trainer' table (see AgentAggregateSerializer below).
+    """
+
+    agent_name = serializers.CharField(source='agent.full_name', read_only=True)
+    training_topic = serializers.CharField(source='script.title', read_only=True)
 
     class Meta:
-        model  = TrainingSession
+        model = TrainingSession
         fields = [
             'id', 'agent_name', 'training_topic',
             'performance_score', 'questions_asked',
             'duration_seconds', 'status', 'started_at',
         ]
+
+
+class AgentAggregateSerializer(serializers.Serializer):
+    """
+    FIX: This is new. The Figma 'Agent Trainer' table shows ONE ROW PER AGENT with a
+    'Sessions' column (42, 42, 42...) — i.e. total session count per agent, plus their
+    average performance score. The old AgentTrainerListSerializer returned one row per
+    TrainingSession instead, which is why every row for the same agent showed an
+    identical, non-aggregated number. Use this serializer with the annotated queryset
+    in views.py (AgentTrainerListView) to match the design.
+    """
+
+    agent_id = serializers.IntegerField()
+    agent_name = serializers.CharField()
+    training_topic = serializers.CharField()  # most recent / most common script title
+    performance_score = serializers.FloatField()  # average across all sessions
+    sessions = serializers.IntegerField()  # total session count
+    last_session_date = serializers.DateTimeField()
+    status = serializers.CharField()  # status of most recent session

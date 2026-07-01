@@ -1,4 +1,8 @@
+import os
 
+markdown_text = """
+
+---
 
 ## 🧪 Complete API Testing Flow (Step-by-Step)
 
@@ -69,3 +73,9 @@ This guide walks you through the entire backend API flow in logical order, from 
    - **Result:** Confirms API is running.
 2. **Get Site Content** `GET /api/auth/site-content/privacy/` or `/terms/`
    - **Result:** Returns global static terms/privacy policy for the app.
+"""
+
+with open("README.md", "a") as f:
+    f.write(markdown_text)
+
+print("Updated README.md")

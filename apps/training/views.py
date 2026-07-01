@@ -1,9 +1,9 @@
 from django.utils import timezone
-from django.db.models import Avg, Count, Sum, Q
+from django.db.models import Avg
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from .models import TrainingScript, AgentScript, TrainingSession
@@ -15,47 +15,13 @@ from .serializers import (
     TrainingSessionEndSerializer,
     TrainingSessionSerializer,
     TrainingSessionListSerializer,
-    AgentDashboardSerializer,
-    AdminDashboardSerializer,
-    AgentTrainerListSerializer,
 )
-from apps.accounts.models import User
-
-
-# ─── Helpers ──────────────────────────────────────────────
-
-DIFFICULTY_SYSTEM_PROMPTS = {
-    'easy': (
-        "You are a friendly and cooperative insurance prospect named John. "
-        "You are genuinely interested in getting insurance. Answer questions openly "
-        "and honestly. Provide your medical history, height, weight, smoking status, "
-        "and other details when asked. Be warm and easy to talk to. "
-        "Your goal is to help the agent practice in a low-pressure environment."
-    ),
-    'medium': (
-        "You are a cautious insurance prospect named Sarah. You are somewhat interested "
-        "but you ask questions back before answering. You hesitate before sharing personal "
-        "details like medical history. You need the agent to build trust before you open up. "
-        "Push back politely, ask 'why do you need that?' occasionally."
-    ),
-    'hard': (
-        "You are a highly skeptical and resistant insurance prospect named Mike. "
-        "You are suspicious of salespeople. You challenge every question, create objections, "
-        "refuse to answer medical questions without strong justification, and may threaten to "
-        "end the conversation if the agent does not handle you well. "
-        "Use phrases like 'I'm not sure I'm interested', 'why would I need that?', "
-        "'how do I know this is legit?'. Make the agent work hard to earn your trust."
-    ),
-}
-
-
-def build_system_prompt(script: TrainingScript, difficulty: str) -> str:
-    base = DIFFICULTY_SYSTEM_PROMPTS.get(difficulty, DIFFICULTY_SYSTEM_PROMPTS['easy'])
-    if script.system_prompt:
-        base += f"\n\nAdditional context from training script:\n{script.system_prompt}"
-    if script.content:
-        base += f"\n\nScript questions/topics to cover:\n{script.content}"
-    return base
+# FIX: reuse the SAME persona prompts as the WebSocket consumer instead of keeping a
+# second, slightly different copy in this file. Previously this file had its own
+# DIFFICULTY_SYSTEM_PROMPTS dict that didn't match consumers.py — meaning the prompt
+# returned by /sessions/start/ (for reference/debugging) could drift out of sync with
+# the prompt actually used inside the live WebSocket chat.
+from .consumers import build_full_system_prompt
 
 
 def calculate_performance_score(session: TrainingSession) -> float:
@@ -64,32 +30,44 @@ def calculate_performance_score(session: TrainingSession) -> float:
     Based on: duration (longer = more engagement) + questions asked.
     Returns 0-100.
     """
-    duration_score  = min(session.duration_seconds / 600 * 50, 50)  # max 50pts for 10min
-    questions_score = min(session.questions_asked * 5, 50)           # max 50pts for 10 questions
+    duration_score = min(session.duration_seconds / 600 * 50, 50)  # max 50pts for 10min
+    questions_score = min(session.questions_asked * 5, 50)         # max 50pts for 10 questions
     return round(duration_score + questions_score, 1)
 
 
 # ─── Admin: Training Script CRUD ──────────────────────────
-
 class TrainingScriptListCreateView(APIView):
+    """
+    GET is also used by the agent-facing 'choose difficulty / choose training' screen
+    that was missing from the Figma export — pass ?difficulty=easy|medium|hard to
+    filter, which is what that screen's cards should call.
+    """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
-        scripts = TrainingScript.objects.all().order_by('-created_at')
-        # filter by difficulty
+        scripts = TrainingScript.objects.filter(is_draft=False).order_by('-created_at')
+
         difficulty = request.query_params.get('difficulty')
+        category = request.query_params.get('category')
         if difficulty:
             scripts = scripts.filter(difficulty=difficulty)
+        if category:
+            scripts = scripts.filter(category__icontains=category)
+
         serializer = TrainingScriptListSerializer(scripts, many=True)
         return Response(serializer.data)
 
     def post(self, request):
         if not request.user.is_staff:
             return Response({"error": "Admin only."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Support the "Save as Draft" button vs "Create Training" button
+        is_draft = str(request.data.get('is_draft', 'false')).lower() == 'true'
+
         serializer = TrainingScriptSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(created_by=request.user)
+            serializer.save(created_by=request.user, is_draft=is_draft)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -133,7 +111,6 @@ class TrainingScriptDetailView(APIView):
 
 
 # ─── Agent: Custom Scripts ─────────────────────────────────
-
 class AgentScriptListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -183,40 +160,56 @@ class AgentScriptDetailView(APIView):
 
 
 # ─── Training Sessions ─────────────────────────────────────
-
 class StartTrainingSessionView(APIView):
     """
-    Agent starts a session.
-    Returns session_id + the system_prompt to use for OpenAI WebSocket chat.
-    Frontend opens WebSocket to Django, Django relays to OpenAI Chat API with this prompt.
+    Agent starts a session (this is the API behind the missing 'Choose Difficulty' +
+    'Start Training' screens).
+
+    Returns session_id + the system_prompt actually used (for debugging/reference).
+    Frontend then opens the WebSocket at:
+        ws/training/chat/<session_id>/?token=<access_token>
+    and streams audio_message frames; see consumers.py for the full contract
+    (now includes audio_base64 TTS replies).
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = TrainingSessionStartSerializer(data=request.data)
         if serializer.is_valid():
-            script     = TrainingScript.objects.get(id=serializer.validated_data['script_id'])
+            script = TrainingScript.objects.get(id=serializer.validated_data['script_id'])
             difficulty = serializer.validated_data['difficulty']
-            prompt     = build_system_prompt(script, difficulty)
+            prompt = build_full_system_prompt(
+                difficulty=difficulty,
+                script_content=script.content,
+                extra_prompt=script.system_prompt,
+            )
 
             session = TrainingSession.objects.create(
-                agent      = request.user,
-                script     = script,
-                difficulty = difficulty,
-                status     = TrainingSession.IN_PROGRESS,
+                agent=request.user,
+                script=script,
+                difficulty=difficulty,
+                status=TrainingSession.IN_PROGRESS,
             )
+
             return Response({
-                "session_id":    session.id,
+                "session_id": session.id,
                 "system_prompt": prompt,
-                "difficulty":    difficulty,
-                "script_title":  script.title,
+                "difficulty": difficulty,
+                "script_title": script.title,
+                "websocket_url": f"ws/training/chat/{session.id}/",
                 "message": "Session started. Connect to WebSocket with session_id.",
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class EndTrainingSessionView(APIView):
-    """Agent ends session, sends transcript + stats."""
+    """Agent ends session, sends transcript + stats.
+
+    NOTE: In the live-chat flow, the WebSocket 'end_session' message already does this
+    (see consumers.py -> _end_session). This REST endpoint is a fallback for cases
+    where the socket already dropped and Flutter needs to close out the session from
+    its locally cached transcript instead.
+    """
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
@@ -230,17 +223,18 @@ class EndTrainingSessionView(APIView):
 
         serializer = TrainingSessionEndSerializer(data=request.data)
         if serializer.is_valid():
-            session.transcript       = serializer.validated_data.get('transcript', [])
+            session.transcript = serializer.validated_data.get('transcript', [])
             session.duration_seconds = serializer.validated_data['duration_seconds']
-            session.questions_asked  = serializer.validated_data['questions_asked']
-            session.status           = TrainingSession.COMPLETED
-            session.ended_at         = timezone.now()
+            session.questions_asked = serializer.validated_data['questions_asked']
+            session.status = TrainingSession.COMPLETED
+            session.ended_at = timezone.now()
             session.performance_score = calculate_performance_score(session)
             session.save()
+
             return Response({
-                "message":           "Session completed.",
+                "message": "Session completed.",
                 "performance_score": session.performance_score,
-                "duration_seconds":  session.duration_seconds,
+                "duration_seconds": session.duration_seconds,
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -250,15 +244,12 @@ class TrainingSessionListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        sessions = TrainingSession.objects.filter(
-            agent=request.user
-        ).order_by('-started_at')
+        sessions = TrainingSession.objects.filter(agent=request.user).order_by('-started_at')
 
-        # filters
         status_filter = request.query_params.get('status')
-        difficulty    = request.query_params.get('difficulty')
-        date_from     = request.query_params.get('date_from')
-        date_to       = request.query_params.get('date_to')
+        difficulty = request.query_params.get('difficulty')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
 
         if status_filter:
             sessions = sessions.filter(status=status_filter)
@@ -287,26 +278,25 @@ class TrainingSessionDetailView(APIView):
         return Response(TrainingSessionSerializer(session).data)
 
 
-
 class AgentDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user  = request.user
+        user = request.user
         today = timezone.now().date()
 
-        all_sessions   = TrainingSession.objects.filter(agent=user)
+        all_sessions = TrainingSession.objects.filter(agent=user)
         today_sessions = all_sessions.filter(started_at__date=today)
 
         today_completed = today_sessions.filter(status=TrainingSession.COMPLETED).count()
-        today_goal      = 5  # configurable later
-        today_percent   = int((today_completed / today_goal) * 100)
+        today_goal = 5  # configurable later
+        today_percent = int((today_completed / today_goal) * 100) if today_goal else 0
 
-        avg_score       = all_sessions.filter(
+        avg_score = all_sessions.filter(
             performance_score__isnull=False
         ).aggregate(avg=Avg('performance_score'))['avg'] or 0
 
-        avg_duration    = all_sessions.filter(
+        avg_duration = all_sessions.filter(
             status=TrainingSession.COMPLETED
         ).aggregate(avg=Avg('duration_seconds'))['avg'] or 0
 
@@ -314,10 +304,10 @@ class AgentDashboardView(APIView):
 
         return Response({
             "today_sessions_completed": today_completed,
-            "today_sessions_goal":      today_goal,
+            "today_sessions_goal": today_goal,
             "today_completion_percent": min(today_percent, 100),
-            "overall_accuracy":         round(avg_score, 1),
-            "avg_session_minutes":      round(avg_duration / 60, 1),
-            "total_sessions":           all_sessions.count(),
-            "recent_sessions":          TrainingSessionListSerializer(recent, many=True).data,
+            "overall_accuracy": round(avg_score, 1),
+            "avg_session_minutes": round(avg_duration / 60, 1),
+            "total_sessions": all_sessions.count(),
+            "recent_sessions": TrainingSessionListSerializer(recent, many=True).data,
         })

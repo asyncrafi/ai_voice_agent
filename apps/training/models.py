@@ -4,42 +4,48 @@ from apps.accounts.models import User
 
 class TrainingScript(models.Model):
     """Admin creates/edits these. Agents can fork their own version."""
-    EASY   = 'easy'
+
+    EASY = 'easy'
     MEDIUM = 'medium'
-    HARD   = 'hard'
+    HARD = 'hard'
     DIFFICULTY_CHOICES = [(EASY, 'Easy'), (MEDIUM, 'Medium'), (HARD, 'Hard')]
 
-    title       = models.CharField(max_length=255)
-    category    = models.CharField(max_length=100)
-    difficulty  = models.CharField(max_length=10, choices=DIFFICULTY_CHOICES)
-    content     = models.TextField()  # the script/questions
-    system_prompt = models.TextField()  # injected into OpenAI Realtime as AI persona
-    image       = models.ImageField(upload_to='training/images/', blank=True, null=True)
+    title = models.CharField(max_length=255)
+    category = models.CharField(max_length=100)
+    difficulty = models.CharField(max_length=10, choices=DIFFICULTY_CHOICES, blank=True)
+    # FIX: Figma "Add Agent Training" screen has an "Estimated Duration" dropdown
+    # (e.g. "50 Mins") that had no backing field before. Added here.
+    duration_minutes = models.PositiveIntegerField(default=30)
+    content = models.TextField()  # the script/questions
+    system_prompt = models.TextField(blank=True)  # injected into OpenAI as AI persona
+    image = models.ImageField(upload_to='training/images/', blank=True, null=True)
     description = models.TextField(blank=True)
-    is_default  = models.BooleanField(default=False)
-    created_by  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    created_at  = models.DateTimeField(auto_now_add=True)
-    updated_at  = models.DateTimeField(auto_now=True)
+    is_default = models.BooleanField(default=False)
+    is_draft = models.BooleanField(default=False)  # FIX: supports "Save as Draft" button
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.title} ({self.difficulty})"
+        return f"{self.title} ({self.difficulty or 'no-difficulty'})"
 
 
 class AgentScript(models.Model):
     """Agent's personal copy/customization of a TrainingScript."""
-    agent       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='custom_scripts')
+
+    agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='custom_scripts')
     base_script = models.ForeignKey(TrainingScript, on_delete=models.SET_NULL, null=True, blank=True)
-    title       = models.CharField(max_length=255)
-    content     = models.TextField()
-    created_at  = models.DateTimeField(auto_now_add=True)
-    updated_at  = models.DateTimeField(auto_now=True)
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class TrainingSession(models.Model):
-    ACTIVE      = 'active'
+    ACTIVE = 'active'
     IN_PROGRESS = 'in_progress'
-    COMPLETED   = 'completed'
-    CANCELED    = 'canceled'
+    COMPLETED = 'completed'
+    CANCELED = 'canceled'
     STATUS_CHOICES = [
         (ACTIVE, 'Active'),
         (IN_PROGRESS, 'In Progress'),
@@ -47,17 +53,26 @@ class TrainingSession(models.Model):
         (CANCELED, 'Canceled'),
     ]
 
-    agent           = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sessions')
-    script          = models.ForeignKey(TrainingScript, on_delete=models.SET_NULL, null=True)
-    difficulty      = models.CharField(max_length=10, choices=TrainingScript.DIFFICULTY_CHOICES)
-    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default=IN_PROGRESS)
-    transcript      = models.JSONField(default=list, blank=True)  # store conversation turns
-    duration_seconds= models.PositiveIntegerField(default=0)
+    agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sessions')
+    script = models.ForeignKey(TrainingScript, on_delete=models.SET_NULL, null=True)
+    difficulty = models.CharField(max_length=10, choices=TrainingScript.DIFFICULTY_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=IN_PROGRESS)
+    transcript = models.JSONField(default=list, blank=True)  # store conversation turns
+    duration_seconds = models.PositiveIntegerField(default=0)
     questions_asked = models.PositiveIntegerField(default=0)
     performance_score = models.FloatField(null=True, blank=True)  # 0-100
-    openai_session_id = models.CharField(max_length=255, blank=True)  # from Realtime API
-    started_at      = models.DateTimeField(auto_now_add=True)
-    ended_at        = models.DateTimeField(null=True, blank=True)
+    openai_session_id = models.CharField(max_length=255, blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.agent.full_name} - {self.difficulty} - {self.status}"
+
+
+# FIX: voice mapping per difficulty persona, used by the TTS step in consumers.py.
+# Kept here so it's a single source of truth shared by both consumers.py and views.py.
+DIFFICULTY_VOICE_MAP = {
+    TrainingScript.EASY: 'alloy',    # warm, friendly — matches "John" persona
+    TrainingScript.MEDIUM: 'nova',   # neutral, a bit guarded — matches "Sarah" persona
+    TrainingScript.HARD: 'onyx',     # deeper, more confrontational — matches "Mike" persona
+}
