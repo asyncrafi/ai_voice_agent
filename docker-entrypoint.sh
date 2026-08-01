@@ -18,7 +18,6 @@ if email and not User.objects.filter(email=email).exists():
         email=email,
         username=email,
         password="$DJANGO_SUPERUSER_PASSWORD",
-        role="admin",
     )
     print(f"Superuser {email} created")
 EOF

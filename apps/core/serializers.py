@@ -11,6 +11,7 @@ class AppSettingSerializer(serializers.ModelSerializer):
         model = AppSetting
         fields = [
             'id',
+            'title',
             'settings_type',
             'settings_type_display',
             'content',

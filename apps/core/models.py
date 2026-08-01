@@ -14,6 +14,8 @@ class AppSetting(models.Model):
     ]
 
     content = models.TextField(blank=True, help_text="Content of the setting (HTML allowed)") 
+
+    title = models.CharField(max_length=100, blank=True, help_text="Title of the setting (optional)")
     
     settings_type = models.CharField(max_length=20, choices=SETTINGS_TYPE_CHOICES)
     

@@ -156,6 +156,7 @@ class TrainingChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.session_id = self.scope['url_route']['kwargs']['session_id']
         self.user = self.scope.get('user')
+        logger.info(f"TrainingChatConsumer connect: session_id={self.session_id} user={self.user} user_type={type(self.user).__name__}")
 
         # Auth check
         if not self.user or not self.user.is_authenticated:
