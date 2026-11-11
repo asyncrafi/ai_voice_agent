@@ -8,6 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.utils import timezone
+from apps.core.views import public_privacy_policy_view, public_terms_conditions_view
 
 
 @api_view(['GET'])
@@ -24,6 +25,12 @@ def health_check(request):
 
 
 urlpatterns = [
+    # Public HTML Legal Pages (Google Play Store & Apple App Store compliance)
+    path('privacy-policy/', public_privacy_policy_view, name='web-privacy-policy'),
+    path('terms/', public_terms_conditions_view, name='web-terms'),
+    path('legal/privacy/', public_privacy_policy_view, name='web-privacy-policy-alt'),
+    path('legal/terms/', public_terms_conditions_view, name='web-terms-alt'),
+
     path('admin/', admin.site.urls),
     path('api/health/', health_check, name='health'),
     path('api/auth/', include('apps.accounts.urls')),

@@ -25,6 +25,11 @@ urlpatterns = [
     path('me/language/', views.LanguageUpdateView.as_view(), name='me-language'),
     path('profile/', views.UserProfileView.as_view(), name='profile'),
     
+    # Account Deletion (Play Store & App Store compliance)
+    path('delete-account/', views.DeleteAccountView.as_view(), name='delete-account'),
+    path('delete/', views.DeleteAccountView.as_view(), name='delete'),
+    path('me/delete/', views.DeleteAccountView.as_view(), name='me-delete'),
+    
     # Site Content
     path('site-content/<str:settings_type>/', SiteContentView.as_view(), name='site-content'),
 ]

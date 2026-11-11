@@ -20,6 +20,7 @@ from .serializers import (
     ChangePasswordSerializer,
     CreateNewPasswordSerializer,
     UserSerializer,
+    DeleteAccountSerializer,
 )
 from .models import OTPVerification
 
@@ -245,3 +246,47 @@ class LanguageUpdateView(BaseResponseMixin, APIView):
         request.user.language = lang
         request.user.save()
         return self.success_response(message="Language updated successfully.")
+
+
+class DeleteAccountView(BaseResponseMixin, APIView):
+    """
+    Deletes the authenticated user's account and all associated personal data.
+    Required by Apple App Store Guideline 5.1.1(v) & Google Play Store User Data Policy.
+    Accepts POST or DELETE.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        return self._delete_account(request)
+
+    def delete(self, request):
+        return self._delete_account(request)
+
+    def _delete_account(self, request):
+        user = request.user
+        email = user.email
+
+        # If user has an avatar file on disk, remove it
+        if getattr(user, 'avatar', None):
+            try:
+                user.avatar.delete(save=False)
+            except Exception:
+                pass
+
+        # Blacklist tokens if blacklist app is available
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+            tokens = OutstandingToken.objects.filter(user=user)
+            for token in tokens:
+                BlacklistedToken.objects.get_or_create(token=token)
+        except Exception:
+            pass
+
+        # Delete user record (cascades related otps, custom scripts, training sessions, etc.)
+        user.delete()
+
+        return self.success_response(
+            message=f"Account and all associated personal data for {email} have been permanently deleted.",
+            data={"deleted": True, "email": email}
+        )
+

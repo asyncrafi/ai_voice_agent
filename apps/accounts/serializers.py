@@ -112,3 +112,12 @@ class UserSerializer(serializers.ModelSerializer):
             if request:
                 data['avatar'] = request.build_absolute_uri(instance.avatar.url)
         return data
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    """
+    Serializer for user account deletion (Play Store & App Store compliance).
+    Accepts confirmation flag or password.
+    """
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    confirmation = serializers.BooleanField(required=False, default=True)
