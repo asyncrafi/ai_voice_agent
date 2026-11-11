@@ -6,6 +6,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
+from django.conf import settings
 
 from .models import OTPVerification
 
@@ -110,7 +111,12 @@ class UserSerializer(serializers.ModelSerializer):
         if instance.avatar:
             request = self.context.get('request')
             if request:
-                data['avatar'] = request.build_absolute_uri(instance.avatar.url)
+                url = request.build_absolute_uri(instance.avatar.url)
+                if url.startswith('http://') and not settings.DEBUG:
+                    url = 'https://' + url[len('http://'):]
+                data['avatar'] = url
+            elif instance.avatar.url:
+                data['avatar'] = instance.avatar.url
         return data
 
 
