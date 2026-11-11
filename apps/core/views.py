@@ -106,10 +106,21 @@ class SiteContentView(BaseResponseMixin, APIView):
         return [AllowAny()]
 
     def get(self, request, settings_type):
+        defaults_map = {
+            'privacy': (DEFAULT_PRIVACY_POLICY, 'Privacy Policy'),
+            'terms': (DEFAULT_TERMS_OF_SERVICE, 'Terms and Conditions'),
+        }
+        default_content, default_title = defaults_map.get(settings_type, ('', ''))
         setting, _ = AppSetting.objects.get_or_create(
             settings_type=settings_type,
-            defaults={'content': ''}
+            defaults={'content': default_content, 'title': default_title}
         )
+        if not setting.content and default_content:
+            setting.content = default_content
+            if not setting.title:
+                setting.title = default_title
+            setting.save()
+
         serializer = AppSettingSerializer(setting)
         return self.success_response(data=serializer.data)
 
