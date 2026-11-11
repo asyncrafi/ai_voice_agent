@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.conf import settings
 
 from .models import OTPVerification
+from .tasks import send_otp_email_task
 
 User = get_user_model()
 
@@ -53,6 +54,14 @@ class RegisterSerializer(serializers.ModelSerializer):
             purpose=OTPVerification.PURPOSE_VERIFICATION,
             expires_at=timezone.now() + datetime.timedelta(minutes=10),
         )
+        try:
+            send_otp_email_task.delay(
+                email=user.email,
+                code=code,
+                full_name=getattr(user, 'full_name', '') or user.email,
+            )
+        except Exception:
+            pass
         return code
 
 

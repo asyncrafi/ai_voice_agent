@@ -11,7 +11,11 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.utils.mixins import BaseResponseMixin
-from apps.accounts.tasks import send_password_reset_email_task
+from apps.accounts.tasks import (
+    send_password_reset_email_task,
+    send_otp_email_task,
+    send_welcome_email_task,
+)
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
@@ -150,6 +154,12 @@ class OTPRequestView(BaseResponseMixin, APIView):
             purpose=purpose,
             expires_at=timezone.now() + datetime.timedelta(minutes=10),
         )
+        full_name = getattr(user, 'full_name', '') or user.email
+        if purpose == OTPVerification.PURPOSE_PASSWORD_RESET:
+            send_password_reset_email_task.delay(email=user.email, code=code, full_name=full_name)
+        else:
+            send_otp_email_task.delay(email=user.email, code=code, full_name=full_name)
+
         return self.success_response(data={'otp_code': code}, message="OTP sent successfully.")
 
 
@@ -172,6 +182,14 @@ class OTPVerifyView(BaseResponseMixin, APIView):
         otp.save()
         user.is_verified = True
         user.save()
+        try:
+            send_welcome_email_task.delay(
+                user_id=user.id,
+                email=user.email,
+                full_name=getattr(user, 'full_name', '') or user.email,
+            )
+        except Exception:
+            pass
         tokens = get_tokens_for_user(user)
         data = {'tokens': tokens}
         return self.success_response(
@@ -213,12 +231,6 @@ class CreateNewPasswordView(BaseResponseMixin, APIView):
         otp.save()
         user.set_password(serializer.validated_data['password'])
         user.save()
-        if user.email:
-            send_password_reset_email_task.delay(
-                email=user.email,
-                code=code,
-                full_name=user.full_name or user.email,
-            )
         return self.success_response(message="Password reset successful.")
 
 

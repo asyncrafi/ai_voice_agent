@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 @shared_task
 def send_welcome_email_task(user_id, email, full_name):
     send_email_task.delay(
-        subject="Welcome to CarWash!",
+        subject="Welcome to Peak Agent!",
         email_to=email,
         template_name="emails/welcome.html",
         context={"name": full_name, "user_id": user_id},
@@ -20,7 +20,7 @@ def send_welcome_email_task(user_id, email, full_name):
 @shared_task
 def send_otp_email_task(email, code, full_name):
     send_email_task.delay(
-        subject="Your CarWash Verification Code",
+        subject="Your Peak Agent Verification Code",
         email_to=email,
         template_name="emails/otp.html",
         context={"name": full_name, "code": code},
@@ -30,7 +30,7 @@ def send_otp_email_task(email, code, full_name):
 @shared_task
 def send_password_reset_email_task(email, code, full_name):
     send_email_task.delay(
-        subject="Reset Your CarWash Password",
+        subject="Reset Your Peak Agent Password",
         email_to=email,
         template_name="emails/password_reset.html",
         context={"name": full_name, "code": code},
