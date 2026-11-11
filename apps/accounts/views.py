@@ -25,6 +25,7 @@ from .serializers import (
     CreateNewPasswordSerializer,
     UserSerializer,
     DeleteAccountSerializer,
+    SocialLoginSerializer,
 )
 from .models import OTPVerification
 
@@ -116,6 +117,78 @@ class LoginView(BaseResponseMixin, APIView):
             data=data,
             message="Login successful.",
         )
+
+
+class SocialLoginView(BaseResponseMixin, APIView):
+    """
+    Instant social login / registration endpoint (Google, Apple, etc.).
+    Takes email (and optional full_name / phone).
+    Automatically creates the user if they do not exist yet (is_verified=True),
+    or retrieves the existing user.
+    Instantly returns user profile and JWT access & refresh tokens.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = SocialLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email'].strip().lower()
+        full_name = serializer.validated_data.get('full_name', '').strip()
+        phone = serializer.validated_data.get('phone', '').strip()
+
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={
+                'username': email,
+                'full_name': full_name or None,
+                'phone': phone or None,
+                'is_verified': True,
+                'is_active': True,
+            }
+        )
+
+        if created:
+            user.set_unusable_password()
+            user.save()
+            try:
+                send_welcome_email_task.delay(
+                    user_id=user.id,
+                    email=user.email,
+                    full_name=user.full_name or user.email,
+                )
+            except Exception:
+                pass
+        else:
+            updated = False
+            if full_name and not user.full_name:
+                user.full_name = full_name
+                updated = True
+            if phone and not user.phone:
+                user.phone = phone
+                updated = True
+            if not user.is_verified:
+                user.is_verified = True
+                updated = True
+            if not user.is_active:
+                user.is_active = True
+                updated = True
+            if updated:
+                user.save()
+
+        tokens = get_tokens_for_user(user)
+        user_data = UserSerializer(user, context={'request': request}).data
+
+        return self.success_response(
+            data={
+                'user': user_data,
+                'tokens': tokens,
+                'is_new_user': created,
+            },
+            message="Account created and logged in successfully." if created else "Login successful.",
+            status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
 
 
 class LogoutView(BaseResponseMixin, APIView):

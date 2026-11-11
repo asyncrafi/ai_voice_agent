@@ -136,3 +136,14 @@ class DeleteAccountSerializer(serializers.Serializer):
     """
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     confirmation = serializers.BooleanField(required=False, default=True)
+
+
+class SocialLoginSerializer(serializers.Serializer):
+    """
+    Serializer for instant social login (Google, Apple, etc.).
+    Requires email; optionally accepts full_name and phone.
+    """
+    email = serializers.EmailField(required=True)
+    full_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    phone = serializers.CharField(max_length=30, required=False, allow_blank=True, default='')
+
